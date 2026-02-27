@@ -1,326 +1,851 @@
-# Notes on PostgreSQL
+# 🐘 PostgreSQL SQL Tutorial — Zero to Hero
 
-## Database Administration
+A comprehensive guide to SQL using PostgreSQL, covering everything from the basics to advanced topics like window functions, CTEs, stored procedures, and triggers.
 
-### Database Creation
+---
 
-The minimum SQL command to create a database is:
+## 📚 Table of Contents
 
+1. [Introduction](#1-introduction)
+2. [Databases: CRUD & Core Queries](#2-databases-crud--core-queries)
+3. [Data Types & Constraints](#3-data-types--constraints)
+4. [Clauses & Operators](#4-clauses--operators)
+5. [Aggregate Functions](#5-aggregate-functions)
+6. [String Functions](#6-string-functions)
+7. [Altering Tables](#7-altering-tables)
+8. [Relationships & Joins](#8-relationships--joins)
+9. [Views & HAVING](#9-views--having)
+10. [Stored Routines](#10-stored-routines)
+11. [Window Functions](#11-window-functions)
+12. [CTEs (Common Table Expressions)](#12-ctes-common-table-expressions)
+13. [Triggers](#13-triggers)
+
+---
+
+## 1. Introduction
+
+### What is a Database?
+- An **organised collection of data**
+- A method to manipulate and access data
+
+### Database vs DBMS vs RDBMS
+
+| Term | Description |
+|------|-------------|
+| **Database** | Raw storage of data |
+| **DBMS** | Software that manages the database (e.g., PostgreSQL, MySQL, Oracle) |
+| **RDBMS** | A DBMS that stores data in structured **tables** (rows & columns) and uses SQL |
+
+### SQL vs PostgreSQL
+
+- **SQL** (Structured Query Language) — the language used to communicate with databases
+  ```sql
+  SELECT * FROM person_db;
+  ```
+- **PostgreSQL** — an open-source RDBMS that uses SQL
+
+### Other Popular Databases
+MongoDB, Oracle, MySQL, SQLite, MaxDB, Firebird, Redis
+
+---
+
+## 2. Databases: CRUD & Core Queries
+
+### Useful `psql` Commands
+
+| Command | Description |
+|---------|-------------|
+| `\l` | List all databases |
+| `\q` | Quit |
+| `\c db_name` | Connect to a database |
+| `\dt` | List all tables |
+| `\d tb_name` | Describe a table |
+| `\d+ tb_name` | List all columns (detailed) |
+| `\! cls` | Clear screen |
+
+### List Databases
 ```sql
-CREATE DATABASE mydb;
+SELECT datname FROM pg_database;
+-- or
+\l
 ```
 
-This creates a copy of the *template1* database. Any role with `CREATEDB` privilege can create new databases. Always use *template1*. Do not edit *template0*. *template0* is your backup in case you've screwed *template1* up.
-
-### Using Schemas
-
-Schemas organize your database into logical groups. If you have dozens of tables in your database, consider sorting them into schemas. Objects must have unique names within a schema but need not be unique across the database. For example, if you are a car dealer, you can place all tables of cars you own and their maintenance records into a cars schema. Place all your staff into an employees schema and place all customer-related information into a customers schema.
-
-Another common way to organize schemas is by roles. This can be particularly handy with applications that serve multiple clients whose data must be kept separate (software multitenancy). Think Cloud-PBX, Logging-SaaS, etc.
-
+### Create a Database
 ```sql
-CREATE SCHEMA customer1;
-CREATE SCHEMA customer2;
+CREATE DATABASE db_name;
 ```
 
-Put the same tables into each schema and insert records into the schema that corresponds with the client. Finally create different login roles for each schema with the **same name as the schema**. Products are now completely isolated in their respective schemas. When customers log in to your database to do stuff, they will be able to access only information pertaining to their own product.
-
-### Backup
-
-PostgreSQL ships with three utilities for backup: *pg_dump*, *pg_dumpall*, and *pg_basebackup*.
-
-Use *pg_dump* to back up specific databases. To back up all databases in plain text along with server globals, use *pg_dumpall*, which needs to run under a superuser
-account so that it back up all databases. Use *pg_basebackup* to do system-level disk backup of all databases.
-
-Two popular open source ones you might want to consider are [pgBackRest](https://pgbackrest.org/) and [Barman](https://www.pgbarman.org/). These offer additional features like backup scheduling, multiserver support, and restore shortcuts.
-
-To create a compressed, single database backup:
-
-```bash
-pg_dump -h localhost -p 5432 -U someuser -F c -b -v -f mydb.backup mydb
-```
-
-To create a plain-text single database backup, including a -C option, which stands for `CREATE DATABASE`:
-
-```bash
-pg_dump -h localhost -p 5432 -U someuser -C -F p -b -v -f mydb.backup mydb
-```
-
-Use the *pg_dumpall* utility to back up all databases on a server into a single plain-text file. This comprehensive backup automatically includes server globals such as table‐space definitions and roles.
-
-It’s a good idea to back up globals on a daily basis. Although you can use *pg_dumpall* to back up databases as well, we prefer backing up databases individually using *pg_dump* or using *pg_basebackup* to do a PostgreSQL service-level backup. Restoring from a huge plain-text backup can take a very long time. Using *pg_basebackup* in conjunction with streaming replication is the fastest way to recover from major server failure.
-
-Backup all globals and tablespace definitions only:
-
-```bash
-pg_dumpall -h localhost -U postgres --port=5432 -f myglobals.sql --globals-only
-```
-
-### Restore
-
-There are two ways to restore data in PostgreSQL from backups created with *pg_dump* or *pg_dumpall*:
-
-* Use *psql* to restore plain-text backups generated with *pg_dumpall* or *pg_dump*.
-* Use *pg_restore* to restore compressed, TAR, and directory backups created with *pg_dump*.
-
-To restore a plain-text backups and stop if any errors is found:
-
-```bash
-psql -U postgres --set ON_ERROR_STOP=on -f myglobals.sql
-```
-
-To restore to a specific database:
-
-```bash
-psql -U postgres -d mydb -f select_objects.sql
-```
-
-If you backed up using *pg_dump* and chose a format such as TAR, custom, or directory, you have to use the *pg_restore* utility to restore.
-
-Some of *pg_restore*’s features are:
-
-* Perform parallel restores using the -j (equivalent to --jobs= ) option to indicate the number of threads to use.
-* Generate a table of contents file from your backup file to check what has been backed up.
-* Selectively restore, even from within a backup of a full database.
-* *pg_restore* is (mostly) backward-compatible. You can back up a database on an older version of PostgreSQL and restore to a newer version.
-
-To perform a restore using *pg_restore*, first create the database anew using SQL:
-
+### Connect to a Database
 ```sql
-CREATE DATABASE mydb;
+\c db_name;
 ```
 
-Then restore:
-
-```bash
-pg_restore --dbname=mydb --jobs=4 --verbose mydb.backup
-```
-
-If the name of the database is the same as the one you backed up, you can create and restore the database in one step:
-
-```bash
-pg_restore --dbname=postgres --create --jobs=4 --verbose mydb.backup
-```
-
-> A restore will not re-create objects already present in a database. If you have data in the database, and you want to replace it with what’s in the backup, you need to add the `--clean` switch to the *pg_restore* command.
-
-## Basic Table Creation
-
+### Drop a Database
 ```sql
-CREATE TABLE logs (
-  log_id serial PRIMARY KEY,
-  user_name varchar(50),
-  description text,
-  log_ts timestamp with time zone NOT NULL DEFAULT current_timestamp
+DROP DATABASE db_name;
+```
+
+---
+
+### Tables
+
+#### Create a Table
+```sql
+CREATE TABLE person (
+  id   INT,
+  name VARCHAR(100),
+  city VARCHAR(100)
 );
-CREATE INDEX idx_logs_log_ts ON logs USING btree (log_ts);
 ```
 
-1. `serial` is the data type used to represent an incrementing autonumber. Adding a serial column automatically adds an accompanying sequence object to the database schema. A serial data type is always an integer with the default value set to the next value of the sequence object. Each table usually has just one serial column, which often serves as the primary key. For very large tables, you should opt for the related `bigserial`.
+#### Check a Table
+```sql
+\d TABLE_NAME
+```
 
-2. `varchar` is shorthand for "character varying", a variable-length string similar to what you will find in other databases. You don’t need to specify a maximum length; if you don’t, `varchar` will be almost identical to the text data type.
+---
 
-3. `text` is a string of indeterminate length. It’s never followed by a length restriction.
+### INSERT (Create)
+```sql
+INSERT INTO person(id, name, city)
+VALUES (101, 'Raju', 'Delhi');
+```
 
-4. `timestamp` with time zone (shorthand `timestamptz`) is a date and time data type, always stored in UTC. It displays date and time in the server’s own time zone unless you tell it to otherwise.
+### SELECT (Read)
+```sql
+SELECT * FROM person;
+SELECT name FROM person;
+```
 
-## Identity
+### UPDATE
+```sql
+UPDATE person
+SET city = 'London'
+WHERE id = 2;
+```
 
-New in version 10 is the `IDENTITY` qualifier for a column. `IDENTITY` is a more standard-compliant way of generating an autonumber for a table column.
+### DELETE
+```sql
+DELETE FROM person
+WHERE name = 'Raju';
+```
+
+---
+
+### Sample Dataset: `employees`
 
 ```sql
-CREATE TABLE logs (
-  log_id int GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-  user_name varchar(50),
-  description text,
-  log_ts timestamp with time zone NOT NULL DEFAULT current_timestamp
+CREATE TABLE employees (
+  emp_id    SERIAL PRIMARY KEY,
+  fname     VARCHAR(50) NOT NULL,
+  lname     VARCHAR(50) NOT NULL,
+  email     VARCHAR(100),
+  dept      VARCHAR(50),
+  salary    NUMERIC(10,2),
+  hire_date DATE
 );
-CREATE INDEX idx_logs_log_ts ON logs USING btree (log_ts);
+
+INSERT INTO employees (emp_id, fname, lname, email, dept, salary, hire_date)
+VALUES
+  (1,  'Raj',    'Sharma', 'raj.sharma@example.com',    'IT',        50000.00, '2020-01-15'),
+  (2,  'Priya',  'Singh',  'priya.singh@example.com',   'HR',        45000.00, '2019-03-22'),
+  (3,  'Arjun',  'Verma',  'arjun.verma@example.com',   'IT',        55000.00, '2021-06-01'),
+  (4,  'Suman',  'Patel',  'suman.patel@example.com',   'Finance',   60000.00, '2018-07-30'),
+  (5,  'Kavita', 'Rao',    'kavita.rao@example.com',    'HR',        47000.00, '2020-11-10'),
+  (6,  'Amit',   'Gupta',  'amit.gupta@example.com',    'Marketing', 52000.00, '2020-09-25'),
+  (7,  'Neha',   'Desai',  'neha.desai@example.com',    'IT',        48000.00, '2019-05-18'),
+  (8,  'Rahul',  'Kumar',  'rahul.kumar@example.com',   'IT',        53000.00, '2021-02-14'),
+  (9,  'Anjali', 'Mehta',  'anjali.mehta@example.com',  'Finance',   61000.00, '2018-12-03'),
+  (10, 'Vijay',  'Nair',   'vijay.nair@example.com',    'Marketing', 50000.00, '2020-04-19');
 ```
 
-Under what cases would you prefer to use `IDENTITY` over serial? The main benefit of the `IDENTITY` construct is that an identity is always tied to a specific table, so incrementing and resetting the value is managed with the table. A serial, on the other hand, creates a sequence object that may or may not be reused by other tables and needs to be dropped manually when it’s no longer needed. If you wanted to reset the number of a serial, you’d need to modify the related `SEQUENCE` object, which means knowing what the name of it is.
+---
 
-## Indexes
+## 3. Data Types & Constraints
 
-> Index names must be unique within a given schema.
+### Common Data Types
 
-### Operator Classes
+| Category | Types |
+|----------|-------|
+| Numeric  | `INT`, `DOUBLE`, `FLOAT`, `DECIMAL` |
+| String   | `VARCHAR(n)` |
+| Date     | `DATE` |
+| Boolean  | `BOOLEAN` |
 
-> Why is the planner not taking advantage of my index?
+#### DECIMAL precision
+```sql
+DECIMAL(5,2)  -- Total 5 digits, 2 after decimal point
+-- e.g., 155.38, 119.12, 28.15
+```
 
-A particular index will work only against a given set of opclasses. To see this complete list, execute the query to get a comprehensive view.
+---
+
+### Constraints
+
+#### PRIMARY KEY
+```sql
+CREATE TABLE person (
+  id   INT PRIMARY KEY,
+  name VARCHAR(100)
+);
+```
+- Uniquely identifies each record
+- Must be UNIQUE and NOT NULL
+- Only ONE primary key per table
+
+#### NOT NULL
+```sql
+CREATE TABLE person (
+  name VARCHAR(100) NOT NULL
+);
+```
+
+#### DEFAULT
+```sql
+CREATE TABLE person (
+  city VARCHAR(100) DEFAULT 'Unknown'
+);
+```
+
+#### SERIAL (Auto Increment)
+```sql
+CREATE TABLE person (
+  id SERIAL PRIMARY KEY
+);
+```
+
+#### UNIQUE
+```sql
+CREATE TABLE person (
+  email VARCHAR(100) UNIQUE
+);
+```
+
+#### CHECK Constraint
+```sql
+-- Named constraint example: phone must be at least 10 digits
+ALTER TABLE employees
+ADD CONSTRAINT chk_phone CHECK (LENGTH(phone) >= 10);
+```
+
+---
+
+## 4. Clauses & Operators
+
+### WHERE
+```sql
+SELECT * FROM employees WHERE salary > 65000;
+```
+
+### Relational Operators
+`=`, `!=`, `>`, `<`, `>=`, `<=`
+
+### Logical Operators
 
 ```sql
-SELECT
-  am.amname AS index_method,
-  opc.opcname AS opclass_name,
-  opc.opcintype::regtype AS indexed_type,
-  opc.opcdefault AS is_default
-FROM pg_am am INNER JOIN pg_opclass opc ON opc.opcmethod = am.oid
-WHERE am.amname = 'btree'
-ORDER BY index_method, indexed_type, opclass_name;
+-- AND: both conditions must be true
+SELECT * FROM employees WHERE salary = 25000 AND dept = 'IT';
+
+-- OR: either condition must be true
+SELECT * FROM employees WHERE salary = 65000 OR dept = 'IT';
 ```
 
-index_method | opclass_name | indexed_type | is_default
------------- | ------------ | ------------ | ----------
-btree | bool_ops | boolean | true
-btree | text_ops | text | true
-btree | text_pattern_ops | text | false
-btree | varchar_ops | text | false
-btree | varchar_pattern_ops | text | false
+### IN / NOT IN
+```sql
+SELECT * FROM employees WHERE dept IN ('IT', 'HR', 'Finance');
+SELECT * FROM employees WHERE dept NOT IN ('Marketing');
+```
 
-B-Tree against `text_ops` (aka `varchar_ops` ) doesn’t include the `~~` operator (the `LIKE` operator), so none of your `LIKE` searches can use an index in the `text_ops` opclass. If you plan on doing many wildcard searches on `varchar` or `text` columns, you’d be better off explicitly choosing the `text_pattern_ops` / `varchar_pattern_ops` opclass for your index. To specify the opclass, just append the opclass after the column name, as in:
+### BETWEEN
+```sql
+SELECT * FROM employees WHERE salary BETWEEN 40000 AND 65000;
+```
+
+### DISTINCT
+```sql
+SELECT DISTINCT fname FROM employees;
+```
+
+### ORDER BY
+```sql
+SELECT * FROM employees ORDER BY fname;           -- ASC (default)
+SELECT * FROM employees ORDER BY salary DESC;     -- DESC
+```
+
+### LIMIT
+```sql
+SELECT * FROM employees LIMIT 3;
+```
+
+### LIKE / ILIKE (Pattern Matching)
+```sql
+SELECT * FROM employees WHERE dept LIKE '%Acc%';
+
+-- Pattern examples:
+-- Starts with 'A'       : LIKE 'A%'
+-- Ends with 'A'         : LIKE '%A'
+-- Contains 'A'          : LIKE '%A%'
+-- Second char is 'A'    : LIKE '_A%'
+-- Case-insensitive      : ILIKE '%john%'
+```
+
+### NOT LIKE
+```sql
+SELECT * FROM employees WHERE fname NOT LIKE 'A%';
+```
+
+### IS NULL
+```sql
+SELECT * FROM employees WHERE fname IS NULL;
+```
+
+---
+
+## 5. Aggregate Functions
+
+### COUNT
+```sql
+SELECT COUNT(*) FROM employees;
+```
+
+### MAX / MIN
+```sql
+SELECT MAX(salary) FROM employees;
+SELECT MIN(salary) FROM employees;
+
+-- Employee with max salary
+SELECT emp_id, fname, salary FROM employees
+WHERE salary = (SELECT MAX(salary) FROM employees);
+```
+
+### SUM / AVG
+```sql
+SELECT SUM(salary) FROM employees;
+SELECT AVG(salary) FROM employees;
+```
+
+### GROUP BY
+```sql
+-- Unique departments
+SELECT dept FROM employees GROUP BY dept;
+
+-- Employee count per department
+SELECT dept, COUNT(fname) FROM employees GROUP BY dept;
+```
+
+---
+
+## 6. String Functions
+
+### CONCAT
+```sql
+SELECT CONCAT(fname, ' ', lname) FROM employees;
+```
+
+### CONCAT_WS (with separator)
+```sql
+SELECT CONCAT_WS('-', fname, lname) FROM employees;
+-- Result: Raj-Sharma
+```
+
+### SUBSTRING
+```sql
+SELECT SUBSTRING('Hey Buddy', 1, 4);
+-- Result: Hey
+```
+
+### REPLACE
+```sql
+SELECT REPLACE('Hey Buddy', 'Hey', 'Hello');
+-- Result: Hello Buddy
+```
+
+### REVERSE
+```sql
+SELECT REVERSE('Hello World');
+```
+
+### LENGTH
+```sql
+SELECT LENGTH('Hello World');
+-- Result: 11
+```
+
+### UPPER / LOWER
+```sql
+SELECT UPPER('Hello World');  -- HELLO WORLD
+SELECT LOWER('Hello World');  -- hello world
+```
+
+### Other Functions
+```sql
+SELECT LEFT('Abcdefghij', 3);         -- Abc
+SELECT RIGHT('Abcdefghij', 4);        -- ghij
+SELECT TRIM(' Alright! ');            -- Alright!
+SELECT POSITION('OM' IN 'Thomas');    -- 3
+```
+
+---
+
+## 7. Altering Tables
+
+### Add a Column
+```sql
+ALTER TABLE employees ADD COLUMN phone VARCHAR(15);
+```
+
+### Drop a Column
+```sql
+ALTER TABLE employees DROP COLUMN phone;
+```
+
+### Rename a Column
+```sql
+ALTER TABLE employees RENAME COLUMN fname TO first_name;
+```
+
+### Rename a Table
+```sql
+ALTER TABLE employees RENAME TO staff;
+```
+
+### Modify Column Type
+```sql
+ALTER TABLE employees ALTER COLUMN salary TYPE FLOAT;
+```
+
+### Add DEFAULT to a Column
+```sql
+ALTER TABLE employees ALTER COLUMN dept SET DEFAULT 'General';
+```
+
+### Set NOT NULL
+```sql
+ALTER TABLE employees ALTER COLUMN email SET NOT NULL;
+```
+
+### Add / Drop Constraints
+```sql
+-- Add a named CHECK constraint
+ALTER TABLE employees
+ADD CONSTRAINT chk_salary CHECK (salary >= 0);
+
+-- Drop a constraint
+ALTER TABLE employees DROP CONSTRAINT chk_salary;
+```
+
+### CASE Expression
+```sql
+SELECT fname, salary,
+  CASE
+    WHEN salary > 55000 THEN 'High'
+    WHEN salary BETWEEN 45000 AND 55000 THEN 'Medium'
+    ELSE 'Low'
+  END AS salary_band
+FROM employees;
+```
+
+---
+
+## 8. Relationships & Joins
+
+### Types of Relationships
+
+| Type | Example |
+|------|---------|
+| One to One (1:1) | Employee ↔ Employee Details |
+| One to Many (1:N) | Employee → Tasks |
+| Many to Many (M:N) | Books ↔ Authors |
+
+---
+
+### Foreign Keys
 
 ```sql
-CREATE INDEX idx1 ON census.lu_tracts USING btree (tract_name text_pattern_ops);
+CREATE TABLE customers (
+  cust_id   SERIAL PRIMARY KEY,
+  cust_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE orders (
+  ord_id   SERIAL PRIMARY KEY,
+  ord_date DATE NOT NULL,
+  price    NUMERIC NOT NULL,
+  cust_id  INTEGER NOT NULL,
+  FOREIGN KEY (cust_id) REFERENCES customers(cust_id)
+);
 ```
 
-Finally, remember that each index you create works against only a single opclass. If you would like an index on a column to cover multiple opclasses, you must create separate indexes. To add the default index text_ops to a table, run:
+### Sample Data
+```sql
+INSERT INTO customers (cust_name)
+VALUES ('Raju'), ('Sham'), ('Paul'), ('Alex');
+
+INSERT INTO orders (ord_date, cust_id, price)
+VALUES
+  ('2024-01-01', 1, 250.00),
+  ('2024-01-15', 1, 300.00),
+  ('2024-02-01', 2, 150.00),
+  ('2024-03-01', 3, 450.00),
+  ('2024-04-04', 2, 550.00);
+```
+
+---
+
+### Joins
+
+#### CROSS JOIN
+Every row from table A combined with every row from table B.
+```sql
+SELECT * FROM customers CROSS JOIN orders;
+```
+
+#### INNER JOIN
+Returns rows with a match in **both** tables.
+```sql
+SELECT customers.cust_name, orders.price
+FROM customers
+INNER JOIN orders ON customers.cust_id = orders.cust_id;
+```
+
+#### Inner Join with GROUP BY
+```sql
+SELECT customers.cust_name, COUNT(orders.ord_id) AS total_orders
+FROM customers
+INNER JOIN orders ON customers.cust_id = orders.cust_id
+GROUP BY customers.cust_name;
+```
+
+#### LEFT JOIN
+Returns **all rows from the left** table + matched rows from the right.
+```sql
+SELECT customers.cust_name, orders.price
+FROM customers
+LEFT JOIN orders ON customers.cust_id = orders.cust_id;
+```
+
+#### RIGHT JOIN
+Returns **all rows from the right** table + matched rows from the left.
+```sql
+SELECT customers.cust_name, orders.price
+FROM customers
+RIGHT JOIN orders ON customers.cust_id = orders.cust_id;
+```
+
+---
+
+### Many-to-Many Relationship
 
 ```sql
-CREATE INDEX idx2 ON census.lu_tracts USING btree (tract_name);
+CREATE TABLE students (
+  id           SERIAL PRIMARY KEY,
+  student_name VARCHAR(100)
+);
+
+CREATE TABLE courses (
+  id          SERIAL PRIMARY KEY,
+  course_name VARCHAR(100),
+  fees        NUMERIC
+);
+
+-- Junction / Bridge table
+CREATE TABLE enrollment (
+  student_id INT REFERENCES students(id),
+  course_id  INT REFERENCES courses(id),
+  PRIMARY KEY (student_id, course_id)
+);
 ```
 
-Now you have two indexes against the same column. (There’s no limit to the number of indexes you can build against a single column.) The planner will choose `idx2` for basic equality queries and `idx1` for comparisons using `LIKE`.
+### CASCADE ON DELETE
+```sql
+CREATE TABLE orders (
+  ord_id  SERIAL PRIMARY KEY,
+  cust_id INTEGER REFERENCES customers(cust_id) ON DELETE CASCADE
+);
+-- Deleting a customer will automatically delete their orders
+```
 
-See the article [Why is My Index Not Used?](http://www.postgresonline.com/journal/archives/78-Why-is-my-index-not-being-used.html) for more info on troubleshooting index issues.
+---
 
-### Functional Indexes
+## 9. Views & HAVING
 
-PostgreSQL lets you add indexes to functions of columns. Functional indexes prove their usefulness in mixed-case textual data. PostgreSQL is a case-sensitive database. To perform a case-insensitive search you could create a functional index:
+### Views
+```sql
+CREATE VIEW it_employees AS
+SELECT * FROM employees WHERE dept = 'IT';
+
+-- Query the view
+SELECT * FROM it_employees;
+```
+
+### HAVING Clause
+Use `HAVING` to filter **grouped** results (like `WHERE` but for aggregates).
+```sql
+SELECT dept, AVG(salary) AS avg_salary
+FROM employees
+GROUP BY dept
+HAVING AVG(salary) > 50000;
+```
+
+### GROUP BY ROLLUP
+```sql
+SELECT dept, SUM(salary)
+FROM employees
+GROUP BY ROLLUP(dept);
+```
+
+---
+
+## 10. Stored Routines
+
+A **Stored Routine** is an SQL statement or set of statements stored on the database server and reusable multiple times.
+
+### Types
+- **Stored Procedure** — performs operations (INSERT, UPDATE, DELETE, SELECT)
+- **User Defined Function (UDF)** — performs operations and **returns a value**
+
+---
+
+### Stored Procedures
+
+#### Update Employee Salary
+```sql
+CREATE OR REPLACE PROCEDURE update_emp_salary(
+  p_employee_id INT,
+  p_new_salary  NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE employees
+  SET salary = p_new_salary
+  WHERE emp_id = p_employee_id;
+END;
+$$;
+
+-- Call the procedure
+CALL update_emp_salary(1, 60000);
+```
+
+#### Add a New Employee
+```sql
+CREATE OR REPLACE PROCEDURE add_employee(
+  p_fname   VARCHAR,
+  p_lname   VARCHAR,
+  p_email   VARCHAR,
+  p_dept    VARCHAR,
+  p_salary  NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO employees (fname, lname, email, dept, salary)
+  VALUES (p_fname, p_lname, p_email, p_dept, p_salary);
+END;
+$$;
+
+-- Call the procedure
+CALL add_employee('John', 'Doe', 'john@example.com', 'IT', 55000);
+```
+
+---
+
+### User Defined Functions
+
+#### Find Highest-Paid Employee per Department
+```sql
+CREATE OR REPLACE FUNCTION dept_max_sal_emp(dept_name VARCHAR)
+RETURNS TABLE(emp_id INT, fname VARCHAR, salary NUMERIC)
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT e.emp_id, e.fname, e.salary
+  FROM employees e
+  WHERE e.dept = dept_name
+    AND e.salary = (
+      SELECT MAX(emp.salary)
+      FROM employees emp
+      WHERE emp.dept = dept_name
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Usage
+SELECT * FROM dept_max_sal_emp('IT');
+```
+
+---
+
+## 11. Window Functions
+
+**Window functions** (analytic functions) perform calculations **across a set of rows related to the current row** without collapsing them, using an `OVER()` clause.
+
+### Benefits
+- Advanced analytics: running totals, moving averages, rankings, cumulative distributions
+- **Non-aggregating**: individual row details are preserved
+- Flexible: usable in `SELECT`, `ORDER BY`, and `HAVING`
+
+### Common Window Functions
+
+| Function | Description |
+|----------|-------------|
+| `ROW_NUMBER()` | Sequential row number within partition |
+| `RANK()` | Rank with gaps for ties |
+| `DENSE_RANK()` | Rank without gaps for ties |
+| `LAG()` | Value from a previous row |
+| `LEAD()` | Value from a subsequent row |
 
 ```sql
-CREATE INDEX idx ON featnames_short
-USING btree (upper(fullname) varchar_pattern_ops);
+-- Rank employees by salary within each department
+SELECT fname, dept, salary,
+  RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS salary_rank
+FROM employees;
+
+-- Running total of salary
+SELECT fname, salary,
+  SUM(salary) OVER (ORDER BY emp_id) AS running_total
+FROM employees;
+
+-- Compare with previous row
+SELECT fname, salary,
+  LAG(salary) OVER (ORDER BY emp_id) AS prev_salary
+FROM employees;
 ```
 
-This next example uses the same function to uppercase the fullname column before comparing. Since we created the index with the same `upper(fullname)` expression, the planner will be able to use the index for this query:
+---
+
+## 12. CTEs (Common Table Expressions)
+
+A **CTE** is a temporary, named result set defined within a query to simplify complex SQL. It only exists for the duration of that single query.
 
 ```sql
-SELECT fullname FROM featnames_short WHERE upper(fullname) LIKE 'S%';
+WITH cte_name AS (
+  -- your subquery here
+)
+SELECT * FROM cte_name;
 ```
 
-### Partial Indexes
+### Use Case 1: Employees Above Department Average Salary
+```sql
+WITH AvgSal AS (
+  SELECT dept, AVG(salary) AS avg_salary
+  FROM employees
+  GROUP BY dept
+)
+SELECT e.emp_id, e.fname, e.dept, e.salary, a.avg_salary
+FROM employees e
+JOIN AvgSal a ON e.dept = a.dept
+WHERE e.salary > a.avg_salary;
+```
 
-Partial indexes (sometimes called filtered indexes) are indexes that cover only rows fitting a predefined `WHERE` condition.
+### Use Case 2: Highest-Paid Employee Per Department
+```sql
+WITH HighestPaid AS (
+  SELECT dept, MAX(salary) AS max_salary
+  FROM employees
+  GROUP BY dept
+)
+SELECT e.emp_id, e.fname, e.lname, e.dept, e.salary
+FROM employees e
+JOIN HighestPaid h ON e.dept = h.dept AND e.salary = h.max_salary;
+```
+
+> **Note:** A CTE can only be used **once** within the query it is defined in. It is not persisted.
+
+---
+
+## 13. Triggers
+
+**Triggers** are special procedures that **automatically execute** in response to specific events (INSERT, UPDATE, DELETE) on a table.
+
+### Use Case: Prevent Negative Salary
+If a negative salary is inserted or updated, automatically set it to `0`.
 
 ```sql
-CREATE TABLE subscribers (
-  id serial PRIMARY KEY,
-  name varchar(50) NOT NULL,
-  is_active boolean);
+-- Step 1: Create the trigger function
+CREATE OR REPLACE FUNCTION prevent_negative_salary()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.salary < 0 THEN
+    NEW.salary := 0;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Step 2: Attach the trigger to the table
+CREATE TRIGGER trg_salary_check
+BEFORE INSERT OR UPDATE ON employees
+FOR EACH ROW
+EXECUTE FUNCTION prevent_negative_salary();
 ```
 
-We add a partial index to guarantee uniqueness only for current subscribers:
+---
+
+## 🏋️ Exercises
+
+### Section 4 — Clauses
+1. Find all distinct departments in the database
+2. Display records ordered by salary (high to low)
+3. Show only the top 3 records from the table
+4. Show records where first name starts with `'A'`
+5. Show records where the length of `lname` is 4 characters
+
+### Section 5 — Aggregates
+1. Find total number of employees in the database
+2. Find number of employees in each department
+3. Find the lowest salary
+4. Find the highest salary
+5. Find total salary paid in a specific department
+6. Find average salary per department
+
+### Section 8 — Relationships Task
+Create a shopping store schema with four tables — `customers`, `orders`, `products`, and `order_items` — demonstrating both one-to-many and many-to-many relationships.
+
+```
+customers          orders             products           order_items
+---------          ------             --------           -----------
+cust_id (PK)       ord_id (PK)        p_id (PK)          items_id (PK)
+cust_name          ord_date           p_name             ord_id (FK)
+                   cust_id (FK)       price              p_id (FK)
+                                                         quantity
+```
+
+---
+
+## 📌 Quick Reference Card
 
 ```sql
-CREATE UNIQUE INDEX uq ON subscribers USING btree(lower(name)) WHERE is_active;
+-- DDL
+CREATE TABLE t (id SERIAL PRIMARY KEY, name VARCHAR(100));
+ALTER TABLE t ADD COLUMN age INT;
+DROP TABLE t;
+
+-- DML
+INSERT INTO t (name) VALUES ('Alice');
+SELECT * FROM t WHERE id = 1;
+UPDATE t SET name = 'Bob' WHERE id = 1;
+DELETE FROM t WHERE id = 1;
+
+-- Filtering
+WHERE salary BETWEEN 40000 AND 60000
+WHERE dept IN ('IT', 'HR')
+WHERE fname LIKE 'A%'
+WHERE email IS NULL
+
+-- Aggregates
+SELECT dept, COUNT(*), AVG(salary), MAX(salary), MIN(salary), SUM(salary)
+FROM employees GROUP BY dept HAVING AVG(salary) > 50000;
+
+-- Joins
+FROM a INNER JOIN b ON a.id = b.a_id
+FROM a LEFT  JOIN b ON a.id = b.a_id
+FROM a RIGHT JOIN b ON a.id = b.a_id
+FROM a CROSS JOIN b
+
+-- CTE
+WITH cte AS (SELECT ...) SELECT * FROM cte;
+
+-- Window
+RANK() OVER (PARTITION BY dept ORDER BY salary DESC)
 ```
-
-> Functions used in the index’s `WHERE` condition must be immutable. This means you can’t use time functions like `CURRENT_DATE` or data from other tables (or other rows of the indexed table) to determine whether a record should be indexed. For example, this index is both PARTIAL and functional because what it indexes is `upper(name)` (not `name`). For an easy way to not have to worry about this, check out *Partial Indexes* in chapter 6 of the [book](http://shop.oreilly.com/product/0636920052715.do).
-
-## Views
-
-### Single Table Views
-
-```sql
-CREATE OR REPLACE VIEW finance.vw_activities_2018 AS
-SELECT activity_type_id, val, yr, activity_id FROM finance.activities WHERE yr = 2018;
-```
-
-As of version 9.3, you can alter the data in this view by using `INSERT`, `UPDATE`, or `DELETE` commands. Updates and deletes will abide by any `WHERE` condition you have as part of your view. Check out *Single Table Views* in chapter 7 of the [book](http://shop.oreilly.com/product/0636920052715.do) for more info on how to do that.
-
-### Handy Constructions
-
-See *Handy Constructions* in chapter 7 of the [book](http://shop.oreilly.com/product/0636920052715.do) for more info on how each shortcut works.
-
-* `DISTINCT ON` behaves like `DISTINCT`, but with two enhancements: you can specify which columns to consider as distinct and to sort the remaining columns.
-* `LIMIT` and `OFFSET`
-* Shorthand Casting allows casting of the text `2011-1-11` to a date by using `'2011-1-11'::date` instead of `CAST('2011-1-11' AS date)`
-* Multirow Insert
-* `ILIKE` for Case-Insensitive Search
-* `ANY` Array Search
-* Set-Returning Functions in `SELECT`
-* Restricting `DELETE`, `UPDATE`, and `SELECT` from Inherited Tables
-* `DELETE USING`
-* Returning affected records to the User
-* `UPSERT`s: `INSERT ON CONFLICT UPDATE`
-* Composite Types in Queries
-* Dollar Quoting
-* `DO`
-* `FILTER` Clause for Aggregates
-* Percentiles and Mode
-
-## Writing Functions
-
-Basic function structure:
-
-```sql
-CREATE OR REPLACE FUNCTION func_name(arg1 arg1_datatype DEFAULT arg1_default)
-RETURNS some type | set of some type | TABLE (..) AS
-$$
-BODY of function
-$$
-LANGUAGE language_of_function
-```
-
-Arguments can have default values, which allow the caller of the function to omit them. Optional arguments must be positioned after nonoptional arguments in the function definition.
-
-Argument names are optional but are useful because they let you refer to an argument by name inside the function body. For example, think of a function that is defined to take three input arguments (two being optional):
-
-```sql
-log_event(msg text, severity numeric DEFAULT 3, facility text DEFAULT 'router')
-```
-
-You can refer to the arguments by name (`msg`, `severity`, etc.) inside the body of the function. If they are not named, you need to refer to the arguments inside the function by their order in the argument list: $1, $2, and $3.
-
-If you name the arguments, you also have the option of using named notation when calling the function:
-
-```sql
-log_event(msg => 'Some message', severity => 2)
-```
-
-### Basic SQL Function
-
-This example shows a primitive SQL function that inserts a row into a table and returns a scalar value:
-
-```sql
-CREATE OR REPLACE FUNCTION write_to_log(param_user_name varchar, param_description text)
-RETURNS integer AS
-$$
-INSERT INTO logs(user_name, description) VALUES($1, $2)
-RETURNING log_id;
-$$
-LANGUAGE 'sql' VOLATILE;
-```
-
-To call the function, execute something like:
-
-```sql
-SELECT write_to_log('mike', 'Logged out at 09:55 AM.') AS new_id;
-```
-
-## Query Performance Tuning
-
-
-### EXPLAIN
-
-```sql
-EXPLAIN (ANALYZE)
-SELECT artist_id, artist_name
-FROM catalog.artists
-WHERE artist_name = 'Daft Punk';
-```
-
-Using `EXPLAIN` alone gives us estimated plan costs. Using `EXPLAIN` in conjunction with `ANALYZE` gives us both estimated and actual costs to execute the plan.
-
-> Get a graphical break down of the output by pasting the result into [PostgreSQL's explain analyze made readable](https://explain.depesz.com/).
-
-An even better visualizer is [Postgres EXPLAIN Visualizer (Pev)](http://tatiyants.com/pev). For best results, use `EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)`. Psql users can export the plan to a file using:
-
-```bash
-psql -qAt -f explain.sql > analyze.json
-```
-
-## Replication and External Data
-
